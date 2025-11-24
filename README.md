@@ -14,6 +14,8 @@ Native macOS battery monitor tray app migrated from BatteryToolkit.
 
 This app focuses on tray-based battery monitoring and notifications using Electron-only APIs. Native daemon integration has been removed.
 
+Notifications are controlled via the tray menu and keyboard shortcut, not in the settings panel. The only notification-related configuration in Settings is the loop interval (seconds) used for repeating alerts when the threshold is met.
+
 ## Develop
 
 ```bash
