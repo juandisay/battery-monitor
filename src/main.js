@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, Notification, powerMonitor } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, Notification, powerMonitor, globalShortcut } from 'electron'
 import { exec } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -49,6 +49,21 @@ let lastNotified = false
 let store = null
 let notifyRepeatTimer = null
 const log = createLogger()
+
+const notificationService = {
+  getEnabled() {
+    try { return !!store?.get('notificationsEnabled') } catch { return true }
+  },
+  setEnabled(val) {
+    try { store?.set('notificationsEnabled', !!val) } catch {}
+    try { setTrayMenu() } catch {}
+    try { pollBatteryOnce() } catch {}
+  },
+  toggle() {
+    const next = !this.getEnabled()
+    this.setEnabled(next)
+  }
+}
 
 /**
  * Create the settings window used for configuration only.
@@ -103,6 +118,10 @@ function setTrayMenu() {
       label: 'Battery Monitor',
       enabled: false
     },
+    {
+      label: `Notifications: ${notificationService.getEnabled() ? 'Enabled' : 'Disabled'}`,
+      enabled: false
+    },
     { type: 'separator' },
     {
       label: 'Settings…',
@@ -117,9 +136,9 @@ function setTrayMenu() {
     {
       label: 'Enable Notifications',
       type: 'checkbox',
-      checked: !!currentSettings.notificationsEnabled,
+      checked: notificationService.getEnabled(),
       click: (item) => {
-        store.set('notificationsEnabled', item.checked)
+        notificationService.setEnabled(item.checked)
       }
     },
     {
@@ -212,7 +231,8 @@ function updateTrayTitle(percent, chargeFlag = false) {
   try {
     if (!tray) return
     const base = Number.isFinite(percent) ? `${Math.round(percent)}%` : '--%'
-    const text = chargeFlag ? `${base} Please charge` : base
+    const bell = notificationService.getEnabled() ? ' 🔔' : ' 🔕'
+    const text = chargeFlag ? `${base} Please charge${bell}` : `${base}${bell}`
     tray.setTitle(text)
     tray.setToolTip(`Battery: ${text}`)
   } catch (err) {
@@ -381,6 +401,7 @@ function initialize() {
   registerIpc()
   attachPowerEvents()
   startPolling()
+  try { globalShortcut.register('Control+Alt+N', () => notificationService.toggle()) } catch {}
 }
 
 app.whenReady().then(() => {
@@ -395,6 +416,7 @@ app.on('window-all-closed', (e) => {
 
 app.on('before-quit', () => {
   stopPolling()
+  try { globalShortcut.unregisterAll() } catch {}
 })
 /**
  * Parse threshold value from CLI args or npm run args.
