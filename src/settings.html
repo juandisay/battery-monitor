@@ -1,0 +1,76 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <title>Battery Monitor Settings</title>
+    <style>
+      html, body { height: 100%; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 12px; }
+      h1 { font-size: 15px; margin: 0 0 8px; }
+      .row { margin: 8px 0; display: flex; align-items: center; }
+      .row label { flex: 1; }
+      .row input[type="range"] { flex: 2; }
+      .value { width: 40px; text-align: right; }
+      .actions { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+      button { padding: 6px 10px; }
+    </style>
+  </head>
+  <body>
+    <h1>Battery Monitor Settings</h1>
+    <div class="row">
+      <label for="threshold">Notification threshold</label>
+      <input id="threshold" type="range" min="1" max="100" step="1" />
+      <span class="value" id="thresholdValue">70%</span>
+    </div>
+    <div class="row">
+      <label for="notifications">Enable notifications</label>
+      <input id="notifications" type="checkbox" />
+    </div>
+    <div class="row">
+      <label for="startup">Launch at startup</label>
+      <input id="startup" type="checkbox" />
+    </div>
+    <div class="row">
+      <label for="repeat">Repeat notifications when low</label>
+      <input id="repeat" type="checkbox" />
+    </div>
+    <div class="row">
+      <label for="interval">Repeat interval (seconds)</label>
+      <input id="interval" type="number" min="1" max="600" step="1" style="width:80px" />
+    </div>
+    <div class="row">
+      <label for="notifyOnAC">Notify when charging</label>
+      <input id="notifyOnAC" type="checkbox" />
+    </div>
+    <div class="actions">
+      <button id="save">Save</button>
+      <button id="testNotify">Test Notification</button>
+      <button id="close">Close</button>
+    </div>
+    <h1 style="margin-top:16px">Daemon Settings</h1>
+    <div class="row">
+      <label for="minCharge">Minimum charge (%)</label>
+      <input id="minCharge" type="range" min="0" max="100" step="1" />
+      <span class="value" id="minChargeValue">0%</span>
+    </div>
+    <div class="row">
+      <label for="maxCharge">Maximum charge (%)</label>
+      <input id="maxCharge" type="range" min="0" max="100" step="1" />
+      <span class="value" id="maxChargeValue">100%</span>
+    </div>
+    <div class="row">
+      <label for="adapterSleep">Sleep adapter when unplugged</label>
+      <input id="adapterSleep" type="checkbox" />
+    </div>
+    <div class="row">
+      <label for="magSafeSync">Sync MagSafe LED</label>
+      <input id="magSafeSync" type="checkbox" />
+    </div>
+    <div class="actions">
+      <button id="saveDaemon">Save Daemon Settings</button>
+    </div>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+    <script src="./settings.js"></script>
+  </body>
+  </html>
