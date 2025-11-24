@@ -7,7 +7,8 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder --mac --arm64",
-    "test:notify": "electron . -- --test-notify"
+    "test:notify": "electron . -- --test-notify",
+    "test:unit": "node tests/notification-logic.test.js"
   },
   "author": "",
   "license": "MIT",
