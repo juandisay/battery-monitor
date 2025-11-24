@@ -29,4 +29,13 @@ contextBridge.exposeInMainWorld('settingsAPI', {
   }
 })
 
+/**
+ * Subscribe to settings updates pushed from the main process.
+ */
+contextBridge.exposeInMainWorld('settingsEvents', {
+  onUpdate: (handler) => {
+    try { ipcRenderer.on('settings:update', (_e, payload) => handler(payload)) } catch {}
+  }
+})
+
 // Daemon APIs removed

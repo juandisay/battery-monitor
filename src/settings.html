@@ -23,14 +23,31 @@
       <input id="threshold" type="range" min="1" max="100" step="1" />
       <span class="value" id="thresholdValue">70%</span>
     </div>
+    <h1 style="margin-top:16px">Notifications</h1>
     <div class="row">
-      
+      <label for="notifEnabled">Enable Notifications</label>
+      <input id="notifEnabled" type="checkbox" />
     </div>
+    <div id="notifPanel" style="display:none">
+      <div class="row">
+        <label for="notifThreshold">Notification Threshold (%)</label>
+        <input id="notifThreshold" type="number" min="1" max="100" step="1" style="width:80px" />
+      </div>
+      <div class="row">
+        <label for="notifInterval">Loop Interval (seconds)</label>
+        <input id="notifInterval" type="number" min="1" max="3600" step="1" style="width:80px" />
+      </div>
+      <div id="notifErrors" style="color:#b00020; margin-top:4px"></div>
+      <div class="row">
+        <label for="soundEnabled">Play sound</label>
+        <input id="soundEnabled" type="checkbox" />
+      </div>
+    </div>
+
     <div class="row">
       <label for="startup">Launch at startup</label>
       <input id="startup" type="checkbox" />
     </div>
-    
     <div class="row">
       <label for="notifyOnAC">Notify when charging</label>
       <input id="notifyOnAC" type="checkbox" />

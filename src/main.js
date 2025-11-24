@@ -24,7 +24,8 @@ function createSettingsStore() {
       notificationsEnabled: true,
       launchAtStartup: false,
       repeatNotifications: true,
-      repeatIntervalSec: 5,
+      repeatIntervalSec: 60,
+      soundEnabled: true,
       notifyOnAC: true
     }
   })
@@ -48,6 +49,8 @@ let pollInterval = null
 let lastNotified = false
 let store = null
 let notifyRepeatTimer = null
+let nextNotifyDueTs = 0
+let trayCountdownTimer = null
 const log = createLogger()
 
 const notificationService = {
@@ -157,6 +160,7 @@ function setTrayMenu() {
     }
   ])
   tray.setContextMenu(menu)
+  updateTrayTooltipCountdown()
 }
 
 /**
@@ -189,11 +193,12 @@ function getSettings() {
       launchAtStartup: store.get('launchAtStartup'),
       repeatNotifications: store.get('repeatNotifications'),
       repeatIntervalSec: store.get('repeatIntervalSec'),
+      soundEnabled: store.get('soundEnabled'),
       notifyOnAC: store.get('notifyOnAC')
     }
   } catch (err) {
     log.error('Failed to read settings', err)
-    return { thresholdPercent: 70, notificationsEnabled: true, launchAtStartup: false, repeatNotifications: true, repeatIntervalSec: 5, notifyOnAC: true }
+    return { thresholdPercent: 70, notificationsEnabled: true, launchAtStartup: false, repeatNotifications: true, repeatIntervalSec: 60, soundEnabled: true, notifyOnAC: true }
   }
 }
 
@@ -203,7 +208,8 @@ function getSettings() {
 function showChargeNotification() {
   try {
     if (!Notification.isSupported()) return
-    const n = new Notification({ title: 'Battery Monitor', body: 'Please charge your device' })
+    const { soundEnabled } = getSettings()
+    const n = new Notification({ title: 'Battery Monitor', body: '[LOW BATTERY] Please charge your device', silent: !soundEnabled })
     n.show()
   } catch (err) {
     log.error('Failed to show notification', err)
@@ -257,7 +263,7 @@ async function pollBatteryOnce() {
   try {
     const { percent, onBattery: isOnBattery } = await getBatteryStatus()
 
-    const { notificationsEnabled, thresholdPercent, repeatNotifications, notifyOnAC } = getSettings()
+    const { notificationsEnabled, thresholdPercent, repeatIntervalSec, notifyOnAC } = getSettings()
     const trayCond = Number.isFinite(percent) && percent <= thresholdPercent && (isOnBattery || notifyOnAC)
     updateTrayTitle(percent, trayCond)
     const notifyCond = shouldNotify(percent, isOnBattery, notificationsEnabled, thresholdPercent, notifyOnAC)
@@ -266,9 +272,7 @@ async function pollBatteryOnce() {
         showChargeNotification()
         lastNotified = true
       }
-      if (repeatNotifications) {
-        startRepeatNotify()
-      }
+      startRepeatNotify(repeatIntervalSec)
     } else {
       // Reset notification flag when charging or above threshold
       if (Number.isFinite(percent) && percent > (thresholdPercent + 2)) {
@@ -334,7 +338,7 @@ function registerIpc() {
   })
 
   ipcMain.handle('settings:save', async (_event, payload) => {
-    const { thresholdPercent, notificationsEnabled, launchAtStartup, repeatNotifications, repeatIntervalSec, notifyOnAC } = payload || {}
+    const { thresholdPercent, notificationsEnabled, launchAtStartup, repeatIntervalSec, soundEnabled, notifyOnAC } = payload || {}
     try {
       // Clamp and persist threshold if provided
       if (thresholdPercent !== undefined && thresholdPercent !== null) {
@@ -351,22 +355,22 @@ function registerIpc() {
         store.set('launchAtStartup', launchAtStartup)
         applyLoginItemSettings(launchAtStartup)
       }
-      if (typeof repeatNotifications === 'boolean') {
-        store.set('repeatNotifications', repeatNotifications)
-        store.set('notificationsEnabled', repeatNotifications)
-      }
       if (repeatIntervalSec !== undefined && repeatIntervalSec !== null) {
         const n = Number(repeatIntervalSec)
         if (Number.isFinite(n)) {
-          const clamped = Math.min(600, Math.max(1, Math.round(n)))
+          const clamped = Math.min(3600, Math.max(1, Math.round(n)))
           store.set('repeatIntervalSec', clamped)
         }
+      }
+      if (typeof soundEnabled === 'boolean') {
+        store.set('soundEnabled', soundEnabled)
       }
       if (typeof notifyOnAC === 'boolean') {
         store.set('notifyOnAC', notifyOnAC)
       }
       setTrayMenu()
       pollBatteryOnce()
+      pushSettingsUpdate()
       return { ok: true }
     } catch (err) {
       log.error('Failed saving settings', err)
@@ -402,6 +406,7 @@ function initialize() {
   attachPowerEvents()
   startPolling()
   try { globalShortcut.register('Control+Alt+N', () => notificationService.toggle()) } catch {}
+  pushSettingsUpdate()
 }
 
 app.whenReady().then(() => {
@@ -534,16 +539,21 @@ function legacyStatus(resolve) {
 /**
  * Start repeat notification timer while battery is at/below threshold.
  */
-function startRepeatNotify() {
-  const { repeatNotifications, repeatIntervalSec, notificationsEnabled, thresholdPercent, notifyOnAC } = getSettings()
-  if (!repeatNotifications || !notificationsEnabled) return
-  const intervalMs = Math.min(60_000, Math.max(1000, Math.round((repeatIntervalSec || 5) * 1000)))
+function startRepeatNotify(repeatIntervalSec) {
+  const { notificationsEnabled, thresholdPercent, notifyOnAC } = getSettings()
+  if (!notificationsEnabled) return
+  const intervalMs = Math.min(3_600_000, Math.max(1000, Math.round((repeatIntervalSec || 60) * 1000)))
   if (notifyRepeatTimer) return
+  nextNotifyDueTs = Date.now() + intervalMs
+  updateTrayTooltipCountdown()
+  startTrayCountdown()
   notifyRepeatTimer = setInterval(async () => {
     try {
       const { percent, onBattery } = await getBatteryStatus()
       if (shouldNotify(percent, onBattery, notificationsEnabled, thresholdPercent, notifyOnAC)) {
         showChargeNotification()
+        nextNotifyDueTs = Date.now() + intervalMs
+        updateTrayTooltipCountdown()
       } else {
         stopRepeatNotify()
       }
@@ -561,6 +571,8 @@ function stopRepeatNotify() {
     clearInterval(notifyRepeatTimer)
     notifyRepeatTimer = null
   }
+  stopTrayCountdown()
+  nextNotifyDueTs = 0
 }
 function resolveAsset(rel) {
   try {
@@ -613,3 +625,44 @@ process.on('unhandledRejection', (reason) => {
 })
 // Authorization prompt removed
 // Daemon support refresh removed
+
+/**
+ * Push settings updates to renderer settings window.
+ */
+function pushSettingsUpdate() {
+  try {
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.webContents.send('settings:update', getSettings())
+    }
+  } catch {}
+}
+
+/**
+ * Start per-second countdown updates in tray tooltip.
+ */
+function startTrayCountdown() {
+  stopTrayCountdown()
+  trayCountdownTimer = setInterval(updateTrayTooltipCountdown, 1000)
+}
+
+/**
+ * Stop countdown updates.
+ */
+function stopTrayCountdown() {
+  if (trayCountdownTimer) { clearInterval(trayCountdownTimer); trayCountdownTimer = null }
+}
+
+/**
+ * Update tray tooltip with next alert countdown.
+ */
+function updateTrayTooltipCountdown() {
+  try {
+    if (!tray) return
+    const now = Date.now()
+    const remainingMs = nextNotifyDueTs > now ? (nextNotifyDueTs - now) : 0
+    const remainingSec = Math.ceil(remainingMs / 1000)
+    const base = 'Battery Monitor'
+    const status = notificationService.getEnabled() ? `Next alert in ${remainingSec}s` : 'Notifications disabled'
+    tray.setToolTip(`${base} — ${status}`)
+  } catch {}
+}

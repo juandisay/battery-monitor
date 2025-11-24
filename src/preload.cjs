@@ -38,6 +38,12 @@ contextBridge.exposeInMainWorld('settingsAPI', {
       console.error('Failed to test notify:', err)
       return { ok: false, error: String(err) }
     }
+  },
+  /**
+   * Subscribe to settings updates pushed from the main process.
+   */
+  onUpdate: (handler) => {
+    try { ipcRenderer.on('settings:update', (_e, payload) => handler(payload)) } catch {}
   }
 })
 
