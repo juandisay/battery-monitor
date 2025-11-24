@@ -25,13 +25,7 @@ async function init() {
   const saveBtn = document.getElementById('save')
   const testBtn = document.getElementById('testNotify')
   const closeBtn = document.getElementById('close')
-  const minChargeEl = document.getElementById('minCharge')
-  const maxChargeEl = document.getElementById('maxCharge')
-  const minChargeValEl = document.getElementById('minChargeValue')
-  const maxChargeValEl = document.getElementById('maxChargeValue')
-  const adapterSleepEl = document.getElementById('adapterSleep')
-  const magSafeSyncEl = document.getElementById('magSafeSync')
-  const saveDaemonBtn = document.getElementById('saveDaemon')
+  // Daemon settings elements removed
 
   // Assume settingsAPI is available via preload (no user-facing warnings)
 
@@ -50,19 +44,12 @@ async function init() {
   }
 
   // Daemon settings removed
-  try { if (saveDaemonBtn) saveDaemonBtn.disabled = true } catch {}
 
   thresholdEl.addEventListener('input', () => {
     thresholdValEl.textContent = `${thresholdEl.value}%`
   })
 
-  minChargeEl.addEventListener('input', () => {
-    minChargeValEl.textContent = `${minChargeEl.value}%`
-  })
-
-  maxChargeEl.addEventListener('input', () => {
-    maxChargeValEl.textContent = `${maxChargeEl.value}%`
-  })
+  // Daemon sliders removed
 
   repeatEl.addEventListener('change', () => {
     notificationsEl.checked = !!repeatEl.checked
