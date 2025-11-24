@@ -49,20 +49,8 @@ async function init() {
     setStatus('Failed to load settings', 'error')
   }
 
-  try {
-    const res = await window.daemonAPI.get()
-    const s = (res && res.settings) || {}
-    const min = Number.isFinite(s.minCharge) ? s.minCharge : 0
-    const max = Number.isFinite(s.maxCharge) ? s.maxCharge : 100
-    minChargeEl.value = min
-    maxChargeEl.value = max
-    minChargeValEl.textContent = `${min}%`
-    maxChargeValEl.textContent = `${max}%`
-    adapterSleepEl.checked = !!s.adapterSleep
-    magSafeSyncEl.checked = !!s.magSafeSync
-  } catch (err) {
-    console.error('Failed to init daemon settings:', err)
-  }
+  // Daemon settings removed
+  try { if (saveDaemonBtn) saveDaemonBtn.disabled = true } catch {}
 
   thresholdEl.addEventListener('input', () => {
     thresholdValEl.textContent = `${thresholdEl.value}%`
@@ -99,22 +87,7 @@ async function init() {
     }
   })
 
-  saveDaemonBtn.addEventListener('click', async () => {
-    try {
-      const payload = {
-        minCharge: Number(minChargeEl.value),
-        maxCharge: Number(maxChargeEl.value),
-        adapterSleep: !!adapterSleepEl.checked,
-        magSafeSync: !!magSafeSyncEl.checked
-      }
-      const res = await window.daemonAPI.save(payload)
-      if (res && res.ok) setStatus('Saved daemon settings')
-      else setStatus('Failed to save daemon settings', 'error')
-    } catch (err) {
-      console.error('Save daemon settings failed:', err)
-      setStatus('Failed to save daemon settings', 'error')
-    }
-  })
+  // Daemon save removed
 
   testBtn.addEventListener('click', async () => {
     try {

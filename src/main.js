@@ -1,11 +1,11 @@
-import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, Notification, powerMonitor, dialog } from 'electron'
+import { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, Notification, powerMonitor } from 'electron'
 import { exec } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import Store from 'electron-store'
 import { createLogger } from './logger.js'
 import { applySecurityPolicies } from './security.js'
-import * as daemon from './daemon-bridge.js'
+// Daemon integration removed
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -104,24 +104,6 @@ function setTrayMenu() {
       enabled: false
     },
     { type: 'separator' },
-    {
-      label: 'Commands',
-      submenu: [
-        { label: 'Disable Power Adapter', enabled: daemon.isAvailable(), click: () => handleCommand(daemon.disablePowerAdapter) },
-        { label: 'Enable Power Adapter', enabled: daemon.isAvailable(), click: () => handleCommand(daemon.enablePowerAdapter) },
-        { type: 'separator' },
-        { label: 'Charge to Limit', enabled: daemon.isAvailable(), click: () => handleCommand(daemon.chargeToLimit) },
-        { label: 'Charge to Full', enabled: daemon.isAvailable(), click: () => handleCommand(daemon.chargeToFull) },
-        { label: 'Disable Charging', enabled: daemon.isAvailable(), click: () => handleCommand(daemon.disableCharging) },
-        { type: 'separator' },
-        { label: 'Pause Background Activity', enabled: daemon.isAvailable(), click: () => handleCommand(daemon.pauseActivity) },
-        { label: 'Resume Background Activity', enabled: daemon.isAvailable(), click: () => handleCommand(daemon.resumeActivity) },
-        { label: 'Approve Background Activity…', enabled: daemon.isAvailable(), click: () => handleCommand(() => daemon.approveDaemon(20)) },
-        { label: 'Launch Background Service…', enabled: daemon.isAvailable(), click: () => handleCommand(daemon.registerDaemon) },
-        { type: 'separator' },
-        { label: 'Remove Background Service…', enabled: daemon.isAvailable(), click: () => handleCommand(daemon.removeDaemon) }
-      ]
-    },
     {
       label: 'Settings…',
       click: () => createSettingsWindow()
@@ -382,26 +364,6 @@ function registerIpc() {
     }
   })
 
-  ipcMain.handle('daemon:get-settings', async () => {
-    try {
-      const res = await daemon.getSettings()
-      const obj = res && res.settings ? res.settings : res
-      return { ok: true, settings: obj || {} }
-    } catch (err) {
-      log.error('Failed to get daemon settings', err)
-      return { ok: false, error: String(err), settings: {} }
-    }
-  })
-
-  ipcMain.handle('daemon:set-settings', async (_event, payload) => {
-    try {
-      await daemon.setSettings(payload || {})
-      return { ok: true }
-    } catch (err) {
-      log.error('Failed to set daemon settings', err)
-      return { ok: false, error: String(err) }
-    }
-  })
 }
 
 /**
@@ -419,9 +381,6 @@ function initialize() {
   registerIpc()
   attachPowerEvents()
   startPolling()
-  if (daemon.isAvailable()) tryDaemonBootstrap()
-  refreshDaemonSupport()
-  setInterval(refreshDaemonSupport, 10000)
 }
 
 app.whenReady().then(() => {
@@ -504,62 +463,7 @@ function handleTestNotifyFlag() {
  */
 function getBatteryStatus() {
   return new Promise((resolve) => {
-    try {
-      if (daemon.isAvailable()) {
-        daemon.getState().then((st) => {
-          try {
-            const percent = Number.isFinite(st.percent) ? Math.min(100, Math.max(0, Number(st.percent))) : NaN
-            const onBattery = !!st.onBattery
-            resolve({ percent, onBattery })
-          } catch {
-            resolve({ percent: NaN, onBattery: false })
-          }
-        }).catch(() => {
-          // Fallback to Electron/pmset
-          legacyStatus(resolve)
-        })
-        return
-      }
-    } catch {}
-
     legacyStatus(resolve)
-  try {
-    const level = powerMonitor.getBatteryLevel?.()
-    const percentFromPM = Number.isFinite(level) ? Math.round(level * 100) : NaN
-    const onBattery = !!powerMonitor.isOnBatteryPower?.()
-    if (Number.isFinite(percentFromPM)) {
-      resolve({ percent: percentFromPM, onBattery })
-      return
-    }
-  } catch {}
-
-    if (process.platform !== 'darwin') {
-      resolve({ percent: NaN, onBattery: false })
-      return
-    }
-
-    try {
-      exec('pmset -g batt', (error, stdout) => {
-        if (error || !stdout) {
-          log.error('pmset failed', error)
-          resolve({ percent: NaN, onBattery: false })
-          return
-        }
-        try {
-          const text = String(stdout)
-          const m = text.match(/(\d{1,3})%/)
-          const percent = m ? Math.min(100, Math.max(0, Number(m[1]))) : NaN
-          const onBattery = /Battery Power/i.test(text)
-          resolve({ percent, onBattery })
-        } catch {
-          log.error('pmset parse failed')
-          resolve({ percent: NaN, onBattery: false })
-        }
-      })
-    } catch {
-      log.error('pmset invocation failed')
-      resolve({ percent: NaN, onBattery: false })
-    }
   })
 }
 
@@ -653,107 +557,30 @@ function resolveAsset(rel) {
  */
 async function showState() {
   try {
-    const st = await daemon.getState()
-    const body = typeof st.percent === 'number'
-      ? `Battery ${st.percent}%` + (st.onBattery ? ' (on battery)' : ' (on AC)')
+    const { percent, onBattery } = await getBatteryStatus()
+    const body = Number.isFinite(percent)
+      ? `Battery ${percent}%` + (onBattery ? ' (on battery)' : ' (on AC)')
       : 'State unavailable'
     if (Notification.isSupported()) new Notification({ title: 'Battery Monitor', body }).show()
   } catch (err) {
     log.error('state query failed', err)
-    showBridgeMissingNotice()
   }
 }
 
 /**
  * Execute a daemon command with logging.
  */
-async function handleCommand(fn) {
-  try {
-    if (!daemon.isAvailable()) {
-      showBridgeMissingNotice()
-      return
-    }
-
-    try {
-      const support = await daemon.isSupported()
-      if (!support || !support.ok) {
-        showDaemonInstallNotice(support)
-        return
-      }
-    } catch {
-      showBridgeMissingNotice()
-      return
-    }
-
-    let res = await fn()
-    if (res && res.error) {
-      const err = String(res.error)
-      if (err === 'authorization_required' || err === 'not_authorized') {
-        await promptAuthorization(fn)
-        return
-      }
-      if (err === 'comm_failed' || err === 'btctl_not_found') {
-        await tryDaemonBootstrap()
-        const again = await fn()
-        if (again && again.error) showBridgeMissingNotice()
-        return
-      }
-      if (err === 'enable_failed' || err === 'missing_plist' || err === 'not_in_app_bundle' || err === 'unsupported_os') {
-        try { await daemon.registerDaemon() } catch {}
-        const again = await fn()
-        if (again && again.error) showDaemonInstallNotice(again)
-        return
-      }
-      log.error('daemon command error', res.error)
-    }
-  } catch (err) {
-    log.error('daemon command failed', err)
-    showBridgeMissingNotice()
-  }
-}
+// Daemon command handling removed
 
 /**
  * Attempt to register, start, approve, and authorize daemon at startup.
  */
-async function tryDaemonBootstrap() {
-  try {
-    if (!daemon.isAvailable()) {
-      showBridgeMissingNotice()
-      return
-    }
-
-    try { await daemon.registerDaemon() } catch {}
-
-    const status = await daemon.startDaemon()
-    if (status && status.requiresApproval) {
-      try { await daemon.approveDaemon(20) } catch {}
-    }
-
-    try { await daemon.authorizeManage() } catch {}
-  } catch (err) {
-    log.error('daemon bootstrap failed', err)
-  }
-}
+// Daemon bootstrap removed
 
 /**
  * Inform the user that native bridge is missing when commands fail.
  */
-function showBridgeMissingNotice() {
-  try {
-    if (!Notification.isSupported()) return
-    const n = new Notification({ title: 'Battery Monitor', body: 'Native service bridge unavailable. Install or build btctl.' })
-    n.show()
-  } catch {}
-}
-
-function showDaemonInstallNotice(detail) {
-  try {
-    const body = typeof detail?.path === 'string'
-      ? `Daemon plist missing: ${detail.path}`
-      : 'Daemon not installed or app not packaged. Build and install the app, then launch the background service.'
-    if (Notification.isSupported()) new Notification({ title: 'Battery Monitor', body }).show()
-  } catch {}
-}
+// Daemon notices removed
 
 // Global error handlers
 process.on('uncaughtException', (err) => {
@@ -762,38 +589,5 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason) => {
   try { log.error('unhandledRejection', reason) } catch {}
 })
-async function promptAuthorization(retryFn) {
-  try {
-    const result = await dialog.showMessageBox({
-      type: 'question',
-      title: 'Battery Monitor',
-      message: 'Authorization required',
-      detail: 'To manage power state, you may be prompted to authorize. If not, approve Battery Monitor in System Settings → Login Items first.',
-      buttons: ['Approve', 'Cancel'],
-      defaultId: 0,
-      cancelId: 1
-    })
-    if (result.response === 0) {
-      try {
-        await daemon.authorizeManage()
-        const again = await retryFn()
-        if (again && again.error) log.error('retry command error', again.error)
-      } catch (err) {
-        log.error('approval failed', err)
-      }
-    }
-  } catch (err) {
-    log.error('authorization prompt failed', err)
-  }
-}
-let daemonSupported = false
-async function refreshDaemonSupport() {
-  try {
-    const r = await daemon.isSupported()
-    daemonSupported = !!(r && r.ok)
-    setTrayMenu()
-  } catch {
-    daemonSupported = false
-    setTrayMenu()
-  }
-}
+// Authorization prompt removed
+// Daemon support refresh removed

@@ -29,22 +29,4 @@ contextBridge.exposeInMainWorld('settingsAPI', {
   }
 })
 
-contextBridge.exposeInMainWorld('daemonAPI', {
-  get: async () => {
-    try {
-      return await ipcRenderer.invoke('daemon:get-settings')
-    } catch (err) {
-      console.error('Failed to get daemon settings:', err)
-      return { ok: false, error: String(err), settings: {} }
-    }
-  },
-  save: async (settings) => {
-    try {
-      const res = await ipcRenderer.invoke('daemon:set-settings', settings)
-      return res
-    } catch (err) {
-      console.error('Failed to save daemon settings:', err)
-      return { ok: false, error: String(err) }
-    }
-  }
-})
+// Daemon APIs removed

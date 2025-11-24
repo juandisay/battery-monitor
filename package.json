@@ -7,9 +7,7 @@
   "scripts": {
     "start": "electron .",
     "build": "electron-builder --mac --arm64",
-    "test:notify": "electron . -- --test-notify",
-    "build:btctl": "mkdir -p .logs && if command -v swift >/dev/null 2>&1; then echo '[btctl] Swift toolchain detected' && (swift build --package-path native/btctl -c release 2>&1 | tee .logs/btctl-build.log) && mkdir -p native/bin && cp native/btctl/.build/release/btctl native/bin/btctl || { echo '[btctl] Swift build failed; see .logs/btctl-build.log'; if [ -x native/bin/btctl ]; then echo '[btctl] Using existing native/bin/btctl'; else echo '[btctl] btctl not present; ensure Xcode Command Line Tools are installed (xcode-select --install)'; exit 1; fi; }; else echo '[btctl] Swift toolchain unavailable'; if [ -x native/bin/btctl ]; then echo '[btctl] Using existing native/bin/btctl'; else echo '[btctl] btctl not present; install Xcode or Swift toolchain'; exit 1; fi; fi",
-    "verify:btctl": "node -e \"import('./src/daemon-bridge.js').then(m=>Promise.all([m.isAvailable(),m.getState()]).then(([a,s])=>{console.log(JSON.stringify({available:a,state:s})); process.exit(a?0:1)})).catch(err=>{console.error('[verify:btctl] error', err); process.exit(1)})\""
+    "test:notify": "electron . -- --test-notify"
   },
   "author": "",
   "license": "MIT",
@@ -30,8 +28,7 @@
       "icon": "assets/icon.icns"
     },
     "extraResources": [
-      { "from": "assets", "to": "assets" },
-      { "from": "native", "to": "native" }
+      { "from": "assets", "to": "assets" }
     ]
   }
 }
