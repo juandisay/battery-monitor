@@ -60,7 +60,12 @@ const notificationService = {
   setEnabled(val) {
     try { store?.set('notificationsEnabled', !!val) } catch {}
     try { setTrayMenu() } catch {}
-    try { pollBatteryOnce() } catch {}
+    try {
+      if (!val) {
+        stopRepeatNotify()
+      }
+      reconfigureNotificationLoop()
+    } catch {}
   },
   toggle() {
     const next = !this.getEnabled()
@@ -358,7 +363,7 @@ function registerIpc() {
       if (repeatIntervalSec !== undefined && repeatIntervalSec !== null) {
         const n = Number(repeatIntervalSec)
         if (Number.isFinite(n)) {
-          const clamped = Math.min(3600, Math.max(1, Math.round(n)))
+          const clamped = Math.min(3600, Math.max(0, Math.round(n)))
           store.set('repeatIntervalSec', clamped)
         }
       }
@@ -369,7 +374,7 @@ function registerIpc() {
         store.set('notifyOnAC', notifyOnAC)
       }
       setTrayMenu()
-      pollBatteryOnce()
+      reconfigureNotificationLoop()
       pushSettingsUpdate()
       return { ok: true }
     } catch (err) {
@@ -542,7 +547,13 @@ function legacyStatus(resolve) {
 function startRepeatNotify(repeatIntervalSec) {
   const { notificationsEnabled, thresholdPercent, notifyOnAC } = getSettings()
   if (!notificationsEnabled) return
-  const intervalMs = Math.min(3_600_000, Math.max(1000, Math.round((repeatIntervalSec || 60) * 1000)))
+  const seconds = Number(repeatIntervalSec || 60)
+  if (!Number.isFinite(seconds) || seconds < 0) return
+  if (seconds === 0) {
+    startSingleNotify()
+    return
+  }
+  const intervalMs = Math.min(3_600_000, Math.max(1000, Math.round(seconds * 1000)))
   if (notifyRepeatTimer) return
   nextNotifyDueTs = Date.now() + intervalMs
   updateTrayTooltipCountdown()
@@ -561,6 +572,27 @@ function startRepeatNotify(repeatIntervalSec) {
       log.error('Repeat notification tick failed', err)
     }
   }, intervalMs)
+}
+
+/**
+ * Send a single notification without starting a loop.
+ */
+function startSingleNotify() {
+  try {
+    const { notificationsEnabled, thresholdPercent, notifyOnAC } = getSettings()
+    if (!notificationsEnabled) return
+    getBatteryStatus().then(({ percent, onBattery }) => {
+      if (shouldNotify(percent, onBattery, notificationsEnabled, thresholdPercent, notifyOnAC)) {
+        showChargeNotification()
+        lastNotified = true
+        nextNotifyDueTs = 0
+        stopTrayCountdown()
+        updateTrayTooltipCountdown()
+      }
+    }).catch((err) => log.error('Single notify failed', err))
+  } catch (err) {
+    log.error('Single notify error', err)
+  }
 }
 
 /**
@@ -665,4 +697,15 @@ function updateTrayTooltipCountdown() {
     const status = notificationService.getEnabled() ? `Next alert in ${remainingSec}s` : 'Notifications disabled'
     tray.setToolTip(`${base} — ${status}`)
   } catch {}
+}
+/**
+ * Reconfigure active notification loop based on current settings.
+ */
+function reconfigureNotificationLoop() {
+  try {
+    stopRepeatNotify()
+    pollBatteryOnce()
+  } catch (err) {
+    log.error('Failed to reconfigure notification loop', err)
+  }
 }

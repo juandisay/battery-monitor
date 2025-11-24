@@ -50,7 +50,7 @@ async function init() {
   function validateNotif() {
     const errs = []
     const iv = Number(notifIntervalEl.value)
-    if (!Number.isInteger(iv) || iv < 1 || iv > 3600) errs.push('Interval must be an integer between 1–3600 seconds')
+    if (!Number.isInteger(iv) || iv < 0 || iv > 3600) errs.push('Interval must be an integer between 0–3600 seconds')
     notifErrorsEl.textContent = errs.join(' \u2022 ')
     return errs.length === 0
   }
